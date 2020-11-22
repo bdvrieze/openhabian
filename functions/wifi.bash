@@ -114,3 +114,54 @@ configure_wifi() {
     fi
   fi
 }
+
+
+## Install comitup WiFi hotspot demon
+## Valid arguments: "setup" or "disable"
+## see https://davesteele.github.io/comitup/ppa.html and
+## https://gist.github.com/jjsanderson/ab2407ab5fd07feb2bc5e681b14a537a
+##
+##    setup_hotspot(String option)
+##
+setup_hotspot() {
+
+  if [[ $1 == "install" ]]; then
+    echo -n "$(timestamp) [openHABian] Installing Comitup hotspot... "
+    # get from source - the comitup package in Buster is 2yrs old
+    echo "deb http://davesteele.github.io/comitup/repo comitup main" > /etc/apt/sources.list.d/comitup.list
+    if ! cond_redirect apt-get --quiet update; then echo "FAILED (update apt lists)"; return 1; fi
+
+    if ! cp "${BASEDIR:-/opt/openhabian}"/includes/comitup.conf /etc/comitup.conf; then echo "FAILED (comitup config)"; return 1; fi
+    if cond_redirect apt install --yes -o Dpkg::Options::=--force-confdef comitup; then echo "OK"; else echo "FAILED"; return 1; fi
+    echo "denyinterfaces wlan0 eth0" >> /etc/dhcpcd.conf
+    sed -i '3 i dhcp=internal' /etc/NetworkManager/NetworkManager.conf
+  elif [[ $1 == "disable" ]]; then
+    echo -n "$(timestamp) [openHABian] Uninstalling hotspot... "
+    if cond_redirect apt purge --yes comitup; then echo "OK"; else echo "FAILED"; return 1; fi
+  fi
+}
+
+
+## ALTERNATIVE: Configure a WiFi hotspot
+## Valid arguments: "setup" or "disable"
+## see https://medium.com/@anooppoommen/create-a-wifi-hotspot-on-linux-29349b9c582d
+## or
+## see https://github.com/lakinduakash/linux-wifi-hotspot
+##
+##    setup_alt_hotspot(String option)
+##
+setup_alt_hotspot() {
+  local hostAPdConfig=hostapd.conf
+  #local DHCPdConfig=udhcpd.conf
+  local interface=hotspot0
+  local SSID=openHABian
+  #local APpassword
+
+  echo -n "$(timestamp) [openHABian] Installing hostapd hotspot... "
+  # TODO: check iw list if mode "ap" contained
+  apt install --yes hostapd
+  iw phy phy0 interface add ${interface} type __ap
+  if ! (sed -e 's|%INTERFACE|'"${interface}"'|g; s|%SSID|'"${SSID}"'|g; s|%PASSWORD|8003|g; s|%FINDSERVER|localhost|g' "${BASEDIR:-/opt/openhabian}"/includes/${hostAPdConfig}-template > "${HOME}/${hostAPdConfig}"); then echo "FAILED (hotspot creation)"; return 1; fi
+
+  hostapd "${HOME}/${hostAPdConfig}"
+}
